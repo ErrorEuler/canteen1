@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Online Canteen — Order</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/order.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ Online Canteen</div>
+    <nav class="nav">
+      <a href="order.html" class="active">Menu</a>
+      <a href="orders.html">My Orders</a>
+      <a href="profile.html">Profile</a>
+      <a href="#" id="logoutLink" style="cursor: pointer;">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="menu-section">
+      <h2 class="headline">Menu</h2>
+
+      <div class="card">
+        <h4>🍛 Student Budget Meals</h4>
+        <div id="budgetContainer" class="items-grid"></div>
+
+        <h4 style="margin-top:16px;">🍔 Foods</h4>
+        <div id="foodsContainer" class="items-grid"></div>
+
+        <h4 style="margin-top:16px;">🥤 Drinks</h4>
+        <div id="drinksContainer" class="items-grid"></div>
+      </div>
+    </section>
+
+    <section class="cart-section card">
+      <h3>🛒 Cart</h3>
+      <div id="cartList" class="cart-list"></div>
+
+      <div class="cart-total">
+        <div>Subtotal: ₱<span id="subtotal">0.00</span></div>
+        <div>Delivery Fee: ₱<span id="deliveryFee">10.00</span></div>
+        <div style="margin-top:8px;font-weight:700;">Grand Total: ₱<span id="grandTotal">0.00</span></div>
+      </div>
+
+      <h4 style="margin-top:12px;">Delivery Details</h4>
+      <label class="input-label" for="delName">Full Name (First Middle Last)</label>
+      <input id="delName" name="delName" type="text" placeholder="First Name, Middle Name, Last Name" pattern="[A-Za-z\s]{3,}" title="Please enter your full name (First, Middle, Last Name)">
+
+      <label class="input-label" for="delContact">Contact Number (11 digits)</label>
+      <input id="delContact" name="delContact" type="tel" placeholder="09XXXXXXXXX" maxlength="11" pattern="[0-9]{11}" title="Contact number must be exactly 11 digits" 
+             oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
+
+      <label class="input-label" for="delAddress">Address / Location</label>
+      <textarea id="delAddress" name="delAddress" placeholder="Block, Building (Inside the Main Campus)"></textarea>
+
+      <h4 style="margin-top:16px;">💳 Payment Method</h4>
+      <div style="margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer; margin-bottom: 8px;">
+          <input type="radio" name="paymentMethod" value="cod" id="paymentCOD" checked style="margin: 0;">
+          <span style="font-size: 1.2rem;">💵</span>
+          <span><strong>Cash on Delivery (COD)</strong></span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer;">
+          <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" style="margin: 0;">
+          <span style="font-size: 1.2rem;">📱</span>
+          <span><strong>GCash</strong></span>
+        </label>
+      </div>
+      <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: none;">
+        <div id="codDetails" style="display: none;">
+          <p style="font-size: 0.9rem; color: #666; margin: 0;">
+            💡 Payment will be collected when your order is delivered. No upfront payment required.
+          </p>
+        </div>
+        <div id="gcashDetails" style="display: none;">
+          <label class="input-label" for="gcashNumber">GCash Mobile Number</label>
+          <input type="tel" id="gcashNumber" name="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
+                 oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
+          <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+            💡 You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:10px;">
+        <button class="btn" onclick="showConfirmBox()">Proceed to Payment</button>
+        <button class="btn ghost" onclick="clearCart()">Clear Cart</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Load script.js with better error handling - prevent duplicate loads
+    if (!window.scriptJsLoading && !window.scriptJsLoaded) {
+      window.scriptJsLoading = true;
+      const script = document.createElement('script');
+      // Add cache-busting parameter to ensure fresh script loads
+      script.src = '/static/script.js?v=' + Date.now();
+      script.onload = function() {
+        console.log('script.js loaded successfully');
+        window.scriptJsLoaded = true;
+        window.scriptJsLoading = false;
+        // Check if functions are actually available
+        setTimeout(() => {
+          // Test if script.js executed at all by checking for a global variable
+          const hasAPIBase = typeof API_BASE !== 'undefined';
+          const hasGetCurrent = typeof getCurrent === 'function';
+          const hasLoadMenu = typeof loadMenuToPage === 'function';
+          const hasRenderCart = typeof renderCart === 'function';
+          console.log('Script execution check:', {
+            API_BASE: hasAPIBase,
+            getCurrent: hasGetCurrent, 
+            loadMenu: hasLoadMenu, 
+            renderCart: hasRenderCart
+          });
+          if (!hasAPIBase) {
+            console.error('❌ script.js did not execute - API_BASE not defined. Check for syntax errors.');
+            if (window.scriptJsError) {
+              console.error('Error details:', window.scriptJsError);
+            }
+          } else if (!hasGetCurrent || !hasLoadMenu || !hasRenderCart) {
+            console.error('⚠️ script.js executed but functions not available - possible error during execution');
+            console.error('Available functions check:', {
+              getCurrent: typeof getCurrent,
+              loadMenuToPage: typeof loadMenuToPage,
+              renderCart: typeof renderCart,
+              API_BASE: typeof API_BASE
+            });
+            if (window.scriptJsError) {
+              console.error('Error details:', window.scriptJsError);
+            }
+            console.error('Check browser console for JavaScript errors in script.js');
+            // Try to reload the script
+            console.log('Attempting to reload script.js...');
+            const newScript = document.createElement('script');
+            newScript.src = '/static/script.js?v=' + Date.now();
+            newScript.onerror = function() {
+              console.error('Failed to reload script.js');
+            };
+            document.head.appendChild(newScript);
+          }
+        }, 200);
+        // Trigger a custom event when script loads
+        window.dispatchEvent(new Event('scriptJsLoaded'));
+      };
+      script.onerror = function() {
+        console.error('Failed to load script.js - check server and file path');
+        window.scriptJsLoaded = false;
+        window.scriptJsLoading = false;
+        alert('Error: Failed to load required scripts. Please refresh the page.');
+      };
+      // Add error handler to catch syntax errors and runtime errors
+      window.addEventListener('error', function(e) {
+        if (e.filename && e.filename.includes('script.js')) {
+          console.error('❌ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
+          console.error('Error details:', e.error);
+          window.scriptJsSyntaxError = true;
+          window.scriptJsError = {
+            message: e.message,
+            line: e.lineno,
+            column: e.colno,
+            error: e.error
+          };
+        }
+      }, true);
+      
+      // Also catch unhandled promise rejections
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e.reason && e.reason.stack && e.reason.stack.includes('script.js')) {
+          console.error('❌ Unhandled promise rejection in script.js:', e.reason);
+          window.scriptJsSyntaxError = true;
+        }
+      });
+      document.head.appendChild(script);
+    } else {
+      console.log('script.js already loading or loaded');
+    }
+  </script>
+  <script>
+    // Wait for script.js to be fully loaded
+    function waitForScript(callback, maxAttempts = 100) {
+      let attempts = 0;
+      let checkInterval = null;
+      let hasCalledCallback = false;
+      
+      const checkScript = () => {
+        if (hasCalledCallback) return; // Prevent multiple callbacks
+        
+        attempts++;
+        // Check if all required functions are available
+        const hasGetCurrent = typeof getCurrent === 'function';
+        const hasLoadMenu = typeof loadMenuToPage === 'function';
+        const hasRenderCart = typeof renderCart === 'function';
+        
+        if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
+          console.log('✅ All script.js functions loaded successfully');
+          if (checkInterval) clearInterval(checkInterval);
+          hasCalledCallback = true;
+          callback();
+        } else if (attempts < maxAttempts) {
+          // Continue checking
+          if (attempts % 10 === 0) {
+            console.log(`Waiting for script.js... (attempt ${attempts}/${maxAttempts})`);
+            console.log('Status:', {getCurrent: hasGetCurrent, loadMenu: hasLoadMenu, renderCart: hasRenderCart});
+            // Check for syntax errors
+            if (window.scriptJsSyntaxError) {
+              console.error('⚠️ Syntax error detected in script.js - functions may not be available');
+            }
+          }
+        } else {
+          console.error('❌ script.js functions not fully available after waiting');
+          console.error('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
+          console.error('scriptJsLoaded flag:', window.scriptJsLoaded);
+          console.error('Possible causes:');
+          console.error('1. Syntax error in script.js preventing execution');
+          console.error('2. script.js not being served correctly by server');
+          console.error('3. CORS or network issues');
+          console.error('Please check browser Network tab for script.js request');
+          if (checkInterval) clearInterval(checkInterval);
+          hasCalledCallback = true;
+          // Try to continue anyway with what we have
+          callback();
+        }
+      };
+      
+      // Listen for script load event
+      window.addEventListener('scriptJsLoaded', () => {
+        console.log('Script load event received, checking functions...');
+        setTimeout(checkScript, 200);
+      });
+      
+      // Start checking immediately and continue
+      checkInterval = setInterval(checkScript, 200);
+      // Also check immediately after a delay
+      setTimeout(checkScript, 500);
+    }
+    
+    function initializeOrderPage() {
+      // Check authentication
+      let isAuthenticated = false;
+      let currentUserData = null;
+      
+      // Try getCurrent first
+      if (typeof getCurrent === 'function') {
+        try {
+          currentUserData = getCurrent();
+          if (currentUserData && currentUserData.role === 'user') {
+            isAuthenticated = true;
+          }
+        } catch(e) {
+          console.warn('getCurrent error:', e);
+        }
+      }
+      
+      // Fallback: check localStorage directly
+      if (!isAuthenticated) {
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            currentUserData = JSON.parse(stored);
+            if (currentUserData && currentUserData.role === 'user') {
+              isAuthenticated = true;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        alert('Please login first');
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Check approval status manually (avoid calling functions that use 'cur' variable)
+      if (currentUserData && currentUserData.role === 'user') {
+        const notificationShown = localStorage.getItem('approval_notification_shown');
+        if (!notificationShown && currentUserData.is_approved !== false && currentUserData.is_approved !== 0) {
+          // Show approval notification manually if needed
+          if (typeof showApprovalNotification === 'function') {
+            try {
+              showApprovalNotification();
+              localStorage.setItem('approval_notification_shown', 'true');
+            } catch(e) {
+              console.warn('showApprovalNotification error:', e);
+            }
+          }
+        }
+      }
+      
+      // Load menu and cart - ensure functions are available with retry logic
+      let menuLoadAttempts = 0;
+      let cartRenderAttempts = 0;
+      const maxMenuAttempts = 10;
+      const maxCartAttempts = 10;
+      
+      function loadMenu() {
+        menuLoadAttempts++;
+        if (typeof loadMenuToPage === 'function') {
+          try {
+            loadMenuToPage();
+            console.log('Menu loaded successfully');
+          } catch(e) {
+            console.error('Error loading menu:', e);
+            // Retry after a delay if we haven't exceeded max attempts
+            if (menuLoadAttempts < maxMenuAttempts) {
+              setTimeout(loadMenu, 500);
+            } else {
+              console.error('Failed to load menu after multiple attempts');
+            }
+          }
+        } else {
+          if (menuLoadAttempts < maxMenuAttempts) {
+            console.warn('loadMenuToPage not available, retrying...', menuLoadAttempts);
+            setTimeout(loadMenu, 300);
+          } else {
+            console.error('loadMenuToPage function not available after multiple attempts');
+          }
+        }
+      }
+      
+      function renderCartItems() {
+        cartRenderAttempts++;
+        if (typeof renderCart === 'function') {
+          try {
+            renderCart();
+            console.log('Cart rendered successfully');
+          } catch(e) {
+            console.error('Error rendering cart:', e);
+            // Retry after a delay if we haven't exceeded max attempts
+            if (cartRenderAttempts < maxCartAttempts) {
+              setTimeout(renderCartItems, 500);
+            } else {
+              console.error('Failed to render cart after multiple attempts');
+            }
+          }
+        } else {
+          if (cartRenderAttempts < maxCartAttempts) {
+            console.warn('renderCart not available, retrying...', cartRenderAttempts);
+            setTimeout(renderCartItems, 300);
+          } else {
+            console.error('renderCart function not available after multiple attempts');
+          }
+        }
+      }
+      
+      // Start loading menu and cart immediately
+      loadMenu();
+      renderCartItems();
+      
+      // Clear form if cart is empty (user just placed an order)
+      if (typeof getCart === 'function') {
+        try {
+          const cart = getCart();
+          if(cart.length === 0) {
+            const delName = document.getElementById('delName');
+            const delContact = document.getElementById('delContact');
+            const delAddress = document.getElementById('delAddress');
+            if(delName) delName.value = '';
+            if(delContact) delContact.value = '';
+            if(delAddress) delAddress.value = '';
+          }
+        } catch(e) {
+          console.warn('Error checking cart:', e);
+        }
+      }
+    }
+    
+    // Handle payment method selection
+    function setupPaymentMethodHandlers() {
+      const paymentDetails = document.getElementById('paymentDetails');
+      const codDetails = document.getElementById('codDetails');
+      const gcashDetails = document.getElementById('gcashDetails');
+      const paymentCOD = document.getElementById('paymentCOD');
+      const paymentGCash = document.getElementById('paymentGCash');
+      
+      if (!paymentDetails || !codDetails || !gcashDetails) {
+        console.warn('Payment method elements not found');
+        return;
+      }
+      
+      function updatePaymentDetails() {
+        const selectedMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
+        
+        if (selectedMethod === 'cod') {
+          codDetails.style.display = 'block';
+          gcashDetails.style.display = 'none';
+          paymentDetails.style.display = 'block';
+        } else if (selectedMethod === 'gcash') {
+          codDetails.style.display = 'none';
+          gcashDetails.style.display = 'block';
+          paymentDetails.style.display = 'block';
+        } else {
+          paymentDetails.style.display = 'none';
+        }
+      }
+      
+      // Add event listeners to radio buttons
+      if (paymentCOD) {
+        paymentCOD.addEventListener('change', updatePaymentDetails);
+      }
+      if (paymentGCash) {
+        paymentGCash.addEventListener('change', updatePaymentDetails);
+      }
+      
+      // Initialize display
+      updatePaymentDetails();
+    }
+    
+    // Setup logout handler
+    function setupLogout() {
+      const logoutLink = document.getElementById('logoutLink');
+      if (logoutLink) {
+        logoutLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          if (typeof logoutUser === 'function') {
+            try {
+              logoutUser();
+            } catch(err) {
+              console.error('Logout error:', err);
+              // Fallback logout
+              if (typeof clearCurrent === 'function') {
+                clearCurrent();
+              } else {
+                localStorage.removeItem('canteen_current_v2');
+              }
+              localStorage.removeItem('canteen_cart_v2');
+              location.href = 'index.html';
+            }
+          } else {
+            // Fallback logout
+            if (typeof clearCurrent === 'function') {
+              clearCurrent();
+            } else {
+              localStorage.removeItem('canteen_current_v2');
+            }
+            localStorage.removeItem('canteen_cart_v2');
+            location.href = 'index.html';
+          }
+        });
+      }
+    }
+    
+    // Initialize when DOM and scripts are ready
+    // Use a single initialization to avoid conflicts
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        setupLogout(); // Setup logout immediately
+        waitForScript(() => {
+          initializeOrderPage();
+          setupPaymentMethodHandlers();
+        });
+      });
+    } else {
+      // DOM already loaded
+      setupLogout(); // Setup logout immediately
+      waitForScript(() => {
+        initializeOrderPage();
+        setupPaymentMethodHandlers();
+      });
+    }
+
+    function showConfirmBox(){
+      const name = document.getElementById('delName')?.value.trim() || '';
+      const contact = document.getElementById('delContact')?.value.trim() || '';
+      const address = document.getElementById('delAddress')?.value.trim() || '';
+      
+      // Get cart
+      let cart = [];
+      if (typeof getCart === 'function') {
+        cart = getCart();
+      } else {
+        // Fallback: get from localStorage
+        try {
+          const stored = localStorage.getItem('canteen_cart_v2');
+          if (stored) {
+            cart = JSON.parse(stored);
+          }
+        } catch(e) {
+          console.error('Error getting cart:', e);
+        }
+      }
+      
+      if(!cart || cart.length === 0) {
+        alert('Cart is empty.');
+        return;
+      }
+      
+      if(!name || !contact || !address) {
+        alert('Please fill in all delivery details.');
+        return;
+      }
+      
+      // Validate full name: must have at least 3 words (First, Middle, Last)
+      const nameWords = name.split(/\s+/).filter(word => word.length > 0);
+      if(nameWords.length < 3) {
+        alert('Please enter your full name: First Name, Middle Name, and Last Name (at least 3 words).');
+        document.getElementById('delName').focus();
+        return;
+      }
+      
+      // Validate contact number: must be exactly 11 digits
+      const contactDigits = contact.replace(/\D/g, ''); // Remove non-digits
+      if(contactDigits.length !== 11) {
+        alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+        document.getElementById('delContact').focus();
+        return;
+      }
+      
+      // Get payment method
+      const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
+      if (!paymentMethod) {
+        alert('Please select a payment method.');
+        return;
+      }
+      
+      // Validate payment details based on selected method
+      if (paymentMethod === 'gcash') {
+        const gcashNumber = document.getElementById('gcashNumber').value.replace(/\D/g, '');
+        if (!gcashNumber || gcashNumber.length !== 11) {
+          alert('Please enter a valid GCash mobile number (11 digits).');
+          document.getElementById('gcashNumber').focus();
+          return;
+        }
+      }
+      
+      // Update contact to digits only
+      const validContact = contactDigits;
+      
+      // Get subtotal and grand total
+      let subtotal = 0;
+      const DELIVERY_FEE = 10;
+      
+      if (typeof calcSubtotal === 'function') {
+        subtotal = calcSubtotal();
+      } else {
+        // Fallback: calculate manually
+        if (typeof getCart === 'function') {
+          const cartItems = getCart();
+          subtotal = cartItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.qty)), 0);
+        }
+      }
+      const grand = subtotal + DELIVERY_FEE;
+      
+      const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'GCash';
+      const paymentNote = paymentMethod === 'cod' ? '\n💵 Payment will be collected upon delivery.' : '\n📱 You will receive payment instructions after placing your order.';
+      if(!confirm(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}${paymentNote}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`)) return;
+      
+      placeOrder(name, validContact, address, paymentMethod);
+    }
+  </script>
+</body>
+</html>
+

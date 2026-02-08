@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Canteen — Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+  <body>
+  <div class="auth-wrap">
+    <div class="auth-card card">
+      <div class="app-logo">
+        <div class="app-logo-circle">
+          <span class="app-logo-plate">🍽️</span>
+        </div>
+        <div class="app-logo-text">
+          <span class="app-logo-title">Online Canteen</span>
+          <span class="app-logo-subtitle">Secure Login</span>
+        </div>
+      </div>
+
+      <h2 class="headline center">Login to your account</h2>
+
+      <label class="input-label">Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" required>
+
+      <label class="input-label">Password</label>
+      <div class="password-row">
+        <input type="password" id="loginPass" placeholder="Enter your password" required>
+        <button type="button" onclick="togglePasswordVisibility('loginPass', 'loginPassToggle')" id="loginPassToggle" title="Show password">👁️</button>
+      </div>
+
+      <button class="btn mt-8" onclick="handleLogin()" id="loginBtn">Login</button>
+      
+      <div id="loginError" style="display: none; color: #e74c3c; margin-top: 10px; text-align: center; font-size: 0.9rem;"></div>
+
+      <p class="center mt-8 muted">
+        Don't have an account? <a href="register.html" class="link">Register</a>
+      </p>
+    </div>
+  </div>
+
+  <script src="/static/script.js"></script>
+  <script>
+    // if already logged in -> redirect to appropriate page
+    // Wait for DOM and scripts to be ready
+    window.addEventListener('DOMContentLoaded', function() {
+      // Wait a bit for script.js to be fully loaded
+      setTimeout(function() {
+        // Check if already logged in -> redirect to appropriate page
+        let currentUser = null;
+        
+        if (typeof getCurrent === 'function') {
+          try {
+            currentUser = getCurrent();
+          } catch(e) {
+            console.warn('getCurrent error:', e);
+          }
+        }
+        
+        // Fallback: check localStorage directly
+        if (!currentUser) {
+          try {
+            const stored = localStorage.getItem('canteen_current_v2');
+            if (stored) {
+              currentUser = JSON.parse(stored);
+            }
+          } catch(e) {
+            // Ignore errors
+          }
+        }
+        
+        // Redirect if logged in
+        if (currentUser && currentUser.role) {
+          if (currentUser.role === 'admin') {
+            location.href = 'admin.html';
+          } else if (currentUser.role === 'user') {
+            location.href = 'order.html';
+          }
+        }
+      }, 100);
+    });
+    
+    // Check approval status for pending users (polling)
+    let approvalCheckInterval = null;
+    async function checkUserApprovalStatus() {
+      const emailInput = document.getElementById('loginEmail');
+      if(!emailInput || !emailInput.value) return;
+      
+      try {
+        // Try to login to check approval status (without actually logging in)
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: emailInput.value.trim().toLowerCase(),
+            password: document.getElementById('loginPass')?.value || ''
+          })
+        });
+        
+        if(response.status === 403) {
+          // Still pending - continue polling
+          return;
+        } else if(response.ok) {
+          // User was approved! Show notification
+          const data = await response.json();
+          if(data.is_approved !== false && data.is_approved !== 0) {
+            // Stop polling
+            if(approvalCheckInterval) {
+              clearInterval(approvalCheckInterval);
+              approvalCheckInterval = null;
+            }
+            
+            // Show success message
+            const errorDiv = document.getElementById('loginError');
+            if(errorDiv) {
+              errorDiv.style.display = 'block';
+              errorDiv.style.color = '#4CAF50';
+              errorDiv.style.background = '#e8f5e9';
+              errorDiv.style.padding = '12px';
+              errorDiv.style.borderRadius = '8px';
+              errorDiv.style.border = '2px solid #4CAF50';
+              errorDiv.textContent = '✅ Your account has been approved! You can now login.';
+            }
+          }
+        }
+      } catch(e) {
+        // Ignore errors
+      }
+    }
+    
+    // Start checking approval status if user has entered email
+    document.addEventListener('DOMContentLoaded', function() {
+      const emailInput = document.getElementById('loginEmail');
+      if(emailInput) {
+        emailInput.addEventListener('blur', function() {
+          // When user leaves email field, start checking if they're waiting for approval
+          if(this.value.trim()) {
+            // Check immediately
+            checkUserApprovalStatus();
+            // Then check every 10 seconds
+            if(approvalCheckInterval) {
+              clearInterval(approvalCheckInterval);
+            }
+            approvalCheckInterval = setInterval(checkUserApprovalStatus, 10000);
+          }
+        });
+      }
+    });
+
+    function togglePasswordVisibility(inputId, buttonId){
+      const input = document.getElementById(inputId);
+      const button = document.getElementById(buttonId);
+      if(input && button) {
+        if(input.type === 'password') {
+          input.type = 'text';
+          button.textContent = '🙈';
+          button.title = 'Hide password';
+        } else {
+          input.type = 'password';
+          button.textContent = '👁️';
+          button.title = 'Show password';
+        }
+      }
+    }
+
+    async function handleLogin(){
+      const btn = document.getElementById('loginBtn');
+      const errorDiv = document.getElementById('loginError');
+      
+      // Disable button and show loading
+      if(btn) {
+        btn.disabled = true;
+        btn.textContent = 'Logging in...';
+      }
+      if(errorDiv) {
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+      }
+      
+      try {
+        // Check if loginUser function is available from script.js
+        if (typeof loginUser === 'function') {
+          await loginUser();
+        } else {
+          // Fallback: manual login
+          const email = document.getElementById('loginEmail')?.value.trim().toLowerCase();
+          const password = document.getElementById('loginPass')?.value.trim();
+          
+          if (!email || !password) {
+            throw new Error('Please enter email and password');
+          }
+          
+          const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          let data = null;
+          let errorMessage = '';
+          
+          try {
+            const responseText = await response.text();
+            if (responseText && responseText.trim()) {
+              data = JSON.parse(responseText);
+            }
+          } catch(parseError) {
+            console.error('Failed to parse response:', parseError);
+            if (!response.ok) {
+              errorMessage = `Server error (${response.status}). Please try again.`;
+            }
+          }
+          
+          if (!response.ok) {
+            // Handle different error cases
+            if (response.status === 400) {
+              errorMessage = data?.detail || data?.message || 'Invalid email or password';
+            } else if (response.status === 403) {
+              errorMessage = data?.detail || data?.message || 'Your account is pending approval. Please wait for admin approval.';
+            } else {
+              errorMessage = data?.detail || data?.message || `Login failed (${response.status}). Please try again.`;
+            }
+            throw new Error(errorMessage);
+          }
+          
+          // Check if user data exists
+          if (!data) {
+            throw new Error('No response from server. Please try again.');
+          }
+          
+          // Server returns user data directly (not wrapped in 'user' property)
+          // Check if data has user properties or if it's wrapped
+          const userData = data.user || data;
+          
+          if (!userData || !userData.id || !userData.email || !userData.role) {
+            throw new Error('Invalid response from server. Please try again.');
+          }
+          
+          // Save user session
+          if (typeof saveCurrent === 'function') {
+            saveCurrent(userData);
+          } else {
+            localStorage.setItem('canteen_current_v2', JSON.stringify(userData));
+          }
+          
+          // Redirect based on role
+          const userRole = userData.role || 'user';
+          if (userRole === 'admin') {
+            location.href = 'admin.html';
+          } else {
+            location.href = 'order.html';
+          }
+        }
+      } catch(error) {
+        console.error('Login handler error:', error);
+        if(errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = error.message || 'Login failed. Please try again.';
+        }
+      } finally {
+        // Re-enable button
+        if(btn) {
+          btn.disabled = false;
+          btn.textContent = 'Login';
+        }
+      }
+    }
+    
+    // Allow Enter key to submit
+    document.addEventListener('DOMContentLoaded', function() {
+      const emailInput = document.getElementById('loginEmail');
+      const passInput = document.getElementById('loginPass');
+      
+      if(emailInput && passInput) {
+        [emailInput, passInput].forEach(input => {
+          input.addEventListener('keypress', function(e) {
+            if(e.key === 'Enter') {
+              handleLogin();
+            }
+          });
+        });
+      }
+    });
+  </script>
+</body>
+</html>
