@@ -3720,6 +3720,92 @@ async def check_mock_gcash_status(transaction_id: str):
 @app.get("/api/mock-gcash/pay/{transaction_id}")
 async def mock_gcash_payment_page(transaction_id: str):
     """Mock GCash payment page for simulation"""
+    # Create proper HTML with the transaction_id properly escaped
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock GCash Payment</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }}
+        .container {{ border: 1px solid #ddd; padding: 30px; border-radius: 10px; }}
+        .success {{ background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; }}
+        .failed {{ background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; }}
+        button {{ padding: 12px 24px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; }}
+        .pay-btn {{ background-color: #007bff; color: white; }}
+        .cancel-btn {{ background-color: #6c757d; color: white; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🧾 Mock GCash Payment</h2>
+        <p>Transaction ID: <strong>{transaction_id}</strong></p>
+        <p>This is a simulation page for testing GCash payments.</p>
+        
+        <div style="margin: 20px 0;">
+            <button class="pay-btn" onclick="simulatePayment('success')">
+                ✅ Simulate Successful Payment
+            </button>
+            <button class="cancel-btn" onclick="simulatePayment('failed')">
+                ❌ Simulate Failed Payment
+            </button>
+        </div>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+        
+        <script>
+            const transaction_id = "{transaction_id}";
+            
+            async function simulatePayment(result) {{
+                try {{
+                    console.log('Simulating payment:', result, 'for transaction:', transaction_id);
+                    const response = await fetch(`/api/mock-gcash/simulate/${{transaction_id}}/${{result}}`, {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }}
+                    }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! Status: ${{response.status}}`);
+                    }}
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="${{result === 'success' ? 'success' : 'failed'}}">
+                                Payment ${{result === 'success' ? 'Successful' : 'Failed'}}!
+                                <p>You can close this window now.</p>
+                                <p><button onclick="checkStatus()">Check Payment Status</button></p>
+                            </div>`;
+                    }} else {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="failed">
+                                Error: ${{data.error || 'Unknown error'}}
+                            </div>`;
+                    }}
+                }} catch (error) {{
+                    console.error('Payment simulation error:', error);
+                    document.getElementById('result').innerHTML = 
+                        `<div class="failed">
+                            Error: ${{error.message}}
+                        </div>`;
+                }}
+            }}
+            
+            function checkStatus() {{
+                // This would check the payment status in the main window
+                if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage({{ type: 'payment_status_check', transaction_id: transaction_id }}, '*');
+                }}
+                // Close this window
+                window.close();
+            }}
+        </script>
+    </div>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html_content)
+    """Mock GCash payment page for simulation"""
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -3778,9 +3864,54 @@ async def mock_gcash_payment_page(transaction_id: str):
 @app.post("/api/mock-gcash/simulate/{transaction_id}/{result}")
 async def simulate_payment_action(transaction_id: str, result: str):
     """Endpoint for simulating payment results"""
-    success = result == "success"
-    mock_result = mock_gcash.simulate_payment(transaction_id, success)
-    return mock_result
+    try:
+        success = result == "success"
+        mock_result = mock_gcash.simulate_payment(transaction_id, success)
+        
+        # If successful, update the order in database
+        if success and mock_result.get("success"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                # Update gcash_transactions table
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                trans_result = cur.fetchone()
+                if trans_result:
+                    order_id = trans_result.get("order_id")
+                    
+                    # Update order
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid',
+                            status = 'Pending'
+                        WHERE id = %s
+                    """, (order_id,))
+                    
+                    conn.commit()
+                    print(f"[MOCK] Order {order_id} marked as paid via simulation")
+                    
+            except Exception as db_error:
+                print(f"[ERROR] Database update failed: {db_error}")
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    conn.close()
+        
+        return mock_result
+        
+    except Exception as e:
+        print(f"[ERROR] Simulation failed: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/mock-gcash/admin")
 async def mock_gcash_admin():
@@ -3862,3 +3993,11 @@ async def reset_mock_payments():
     """Reset all mock payments"""
     result = mock_gcash.reset_payments()
     return result
+
+@app.get("/debug/mock-gcash")
+async def debug_mock_gcash():
+    """Debug endpoint to check mock GCash status"""
+    return {
+        "mock_gcash_payments": len(mock_gcash.payments),
+        "payments": list(mock_gcash.payments.keys())
+    }

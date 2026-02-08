@@ -720,6 +720,7 @@ async function placeOrder(name, contact, address, paymentMethod) {
     }
 
     // ── GCash ─────────────────────────────────────────────
+    // In your placeOrder function, update the GCash section:
     if (paymentMethod === 'gcash') {
       orderData.payment_status = 'pending';
 
@@ -738,14 +739,28 @@ async function placeOrder(name, contact, address, paymentMethod) {
       const orderResult = await orderResponse.json();
       const orderId = orderResult.order?.id || orderResult.id;
 
-      // 2. Process GCash payment (mock or real)
+      // 2. Process GCash payment (mock)
+      console.log('Processing mock GCash payment for order:', orderId);
       const paymentResult = await processMockGCashPayment(orderId, total, gcashNumber);
 
-      if (!paymentResult || !paymentResult.success) {
-        throw new Error(paymentResult?.message || 'GCash payment setup failed');
+      if (!paymentResult) {
+        // If payment setup failed, we should still create the order but mark it as pending
+        console.log('GCash payment setup failed, but order created with ID:', orderId);
+
+        // Show alternative payment instructions
+        const adminNumber = '09947784922'; // Your admin GCash number
+        showGCashPaymentModal({
+          admin_gcash_number: adminNumber,
+          amount: total,
+          reference: `ORDER_${orderId}`,
+          order_id: orderId,
+          qr_code_url: '/static/gcash-qr.jpg'
+        });
+
+        return; // Exit early since we showed the modal
       }
 
-      // Success handling (same as COD but different message)
+      // If payment was successful, show success message
       await finalizeOrderSuccess(orderResult, 'GCash');
       return;
     }
@@ -3227,7 +3242,7 @@ async function processGCashPayment(orderId, amount, gcashNumber) {
 
 async function processMockGCashPayment(orderId, amount, gcashNumber) {
   try {
-    showLoading('Creating mock GCash payment...');
+    console.log('Loading: Creating mock GCash payment...');
 
     const response = await fetch(`/api/mock-gcash/create-payment`, {
       method: 'POST',
@@ -3243,22 +3258,32 @@ async function processMockGCashPayment(orderId, amount, gcashNumber) {
     });
 
     const result = await response.json();
+    console.log('Mock GCash response:', result);
 
+    // FIX: Check if the response structure is correct
     if (result.success) {
+      // Get the checkout_url - it might be directly in result or in result.data
+      const checkoutUrl = result.checkout_url || (result.data && result.data.checkout_url);
+
+      if (!checkoutUrl) {
+        throw new Error('No checkout URL in response');
+      }
+
       // Open mock checkout page in new tab
-      const checkoutUrl = result.data.checkout_url;
       window.open(checkoutUrl, '_blank', 'width=500,height=700');
 
       // Show status checking modal
-      showMockPaymentStatusModal(result.data.transaction_id, amount, orderId);
+      const transactionId = result.transaction_id || (result.data && result.data.transaction_id);
+      showMockPaymentStatusModal(transactionId, amount, orderId);
 
-      return result.data;
+      return result.data || result;
     } else {
-      throw new Error(result.message || 'Payment creation failed');
+      throw new Error(result.message || result.error || 'Payment creation failed');
     }
   } catch (error) {
     console.error('Mock GCash error:', error);
-    showError('Payment setup failed: ' + error.message);
+    // More detailed error message
+    showError(`Payment setup failed: ${error.message}`);
     return null;
   }
 }
